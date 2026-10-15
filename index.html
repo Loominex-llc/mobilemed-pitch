@@ -2376,7 +2376,7 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
   </h1>
   <p data-o1="p" data-in="3.3" data-d="0.6" style="margin:14px 0 0;font-size:17px;line-height:1.5;color:#aab6c4;text-wrap:pretty">An Uber-style marketplace for home-health nursing, with AI-assisted paperwork and the tools to run a nursing team.</p>
 
-  <div data-o1="net" style="position:absolute;left:22px;right:22px;top:380px;height:300px">
+  <div data-o1="net" style="position:absolute;left:calc(50% - 173px);width:346px;top:380px;height:300px">
     <svg width="346" height="60" viewBox="0 0 346 60" style="position:absolute;left:0;top:0;overflow:visible">
       <line x1="68" y1="28" x2="278" y2="28" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="2 4" data-in="4.1" data-rise="0"></line>
       <path d="M68 28H145" fill="none" stroke="#5aa9f0" stroke-width="1.5" data-draw="5.0" data-d="0.8"></path>
@@ -3238,6 +3238,8 @@ const NAMES = { nurse: 'Nurse', provider: 'Provider', pharmacy: 'Pharmacy', pati
 const DIV = { nurse: 'For nurses', provider: 'For home‑health providers', pharmacy: 'For pharmacies and referrers', patient: 'For patients', investor: 'Investor view' };
 const ALL = ['nurse', 'provider', 'pharmacy', 'patient'].flatMap(k => ['D:' + k, ...TRACKS[k]]).concat('X1');
 const sid = s => (s || '').split(':')[0];
+// Widest the phone layout's content column grows, in design pixels; past it the column is centred.
+const PHONE_MAX_W = 560;
 const trackOf = id => Object.keys(TRACKS).find(k => TRACKS[k].includes(id));
 const cl = v => Math.max(0, Math.min(1, v));
 const E = p => 1 - Math.pow(1 - p, 3);
@@ -3253,7 +3255,7 @@ const interp = (kf, t, red) => {
 };
 
 class Component extends DCLogic {
-  state = { seq: ['O1', 'O2'], i: 0, auto: true, scale: 1, wide: false, home: true, disp: null };
+  state = { seq: ['O1', 'O2'], i: 0, auto: true, scale: 1, stageW: 390, stageH: 844, wide: false, home: true, disp: null };
   stageRef = React.createRef();
   seq = ['O1', 'O2']; i = 0; t = 0; last = 0; prev = null; prevT = 0; switchAt = 0; auto = true; wide = false;
 
@@ -3263,10 +3265,14 @@ class Component extends DCLogic {
       const W = innerWidth || document.documentElement.clientWidth, H = innerHeight || document.documentElement.clientHeight;
       if (!W || !H) { setTimeout(this.onResize, 50); return; }
       const mode = this.disp || this.props.layout || 'auto';
-      const wide = mode === 'wide' || (mode === 'auto' && W >= 900 && W / H >= 1.15);
+      // Landscape screens from 640 px wide (phones turned sideways, tablets, laptops) get the wide layout.
+      const wide = mode === 'wide' || (mode === 'auto' && W >= 640 && W / H >= 1.15);
       this.wide = wide;
       const s = wide ? Math.min(W / 1280, H / 860) * 0.96 : Math.min(W / 390, H / 844) * (W < 500 ? 1 : 0.96);
-      this.setState({ scale: s, wide });
+      // The phone layout takes the screen's shape, so it fills the screen at this scale. Whole pixels, rounded up:
+      // the surround clips the fraction, and the layout's offsets stay exact.
+      const stageW = wide ? 1280 : Math.max(390, Math.ceil(W / s)), stageH = wide ? 860 : Math.max(844, Math.ceil(H / s));
+      this.setState({ scale: s, wide, stageW, stageH });
     };
     this.ro = new ResizeObserver(() => this.onResize());
     this.ro.observe(document.documentElement);
@@ -3356,11 +3362,27 @@ class Component extends DCLogic {
   }
   layout(root) {
     const W = this.wide;
-    root.style.width = W ? '1280px' : '390px'; root.style.height = W ? '860px' : '844px';
+    root.style.width = this.state.stageW + 'px'; root.style.height = this.state.stageH + 'px';
+    // The phone layout runs edge to edge: the surround takes the stage colour and the outline goes.
+    const bg = W ? '#060d16' : '#0b1726';
+    if (this.bg !== bg) {
+      this.bg = bg;
+      [root.parentElement, document.documentElement, document.body].forEach(el => { el.style.background = bg; });
+      root.style.boxShadow = W ? '0 0 0 1px rgba(255,255,255,0.04)' : 'none';
+    }
     const sc = 'scale(' + this.state.scale + ')'; if (root.style.transform !== sc) root.style.transform = sc;
     root.querySelectorAll('[data-scenes]').forEach(el => this.lay(el, W, e => { e.style.height = '740px'; }));
     root.querySelectorAll('[data-homein]').forEach(el => this.lay(el, W, e => { e.style.zoom = '1.3'; }));
     root.querySelectorAll('[data-footer]').forEach(el => this.lay(el, W, e => { e.style.left = '445px'; e.style.right = '445px'; }));
+    // Phone layout on a wider or taller screen: centre a column of at most PHONE_MAX_W, and split the extra height
+    // above and below the scenes. The wide layout keeps its own positions (set by lay above).
+    const px = W ? 0 : Math.max(0, (this.state.stageW - PHONE_MAX_W) / 2), py = W ? 0 : (this.state.stageH - 844) / 2;
+    const put = (el, k, v) => { if (el && el.style[k] !== v) el.style[k] = v; };
+    const hd = root.querySelector('header'); put(hd, 'left', 22 + px + 'px'); put(hd, 'right', 22 + px + 'px');
+    if (!W) {
+      root.querySelectorAll('[data-scenes]').forEach(el => { put(el, 'left', px + 'px'); put(el, 'right', px + 'px'); put(el, 'top', 52 + py + 'px'); });
+      root.querySelectorAll('[data-footer]').forEach(el => { put(el, 'left', 22 + px + 'px'); put(el, 'right', 22 + px + 'px'); });
+    }
     root.querySelectorAll('[data-scene]').forEach(s => {
       const hasPanel = !!s.querySelector('[data-panel]') && !!s.querySelector('[data-cap]');
       this.lay(s, W, e => { const id = e.dataset.scene;
